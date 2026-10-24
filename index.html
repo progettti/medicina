@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promemoria Farmaci Anziani</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; }
+    body { background-color: #f4f6f8; color: #333; display: flex; justify-content: center; padding: 20px; min-height: 100vh; align-items: center; }
+    .card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 24px; width: 100%; max-width: 480px; text-align: center; position: relative; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; color: #1a1a1a; }
+    
+    .clock-display { font-size: 1.1rem; color: #555; margin-bottom: 20px; font-weight: 600; }
+    .clock-time { font-size: 1.8rem; font-weight: 800; color: #2563eb; display: block; margin-top: 4px; }
+
+    /* Lista delle medicine attive */
+    .med-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; text-align: left; }
+    .med-box { 
+      background-color: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-left: 8px solid #2563eb;
+      border-radius: 12px; 
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .med-time { font-size: 1.4rem; font-weight: 800; color: #1e293b; }
+    .med-name { font-size: 1.1rem; font-weight: 700; color: #0f172a; text-transform: uppercase; }
+    .med-type { font-size: 0.75rem; background: #e0e7ff; color: #3730a3; padding: 3px 8px; border-radius: 10px; font-weight: 600; display: inline-block; margin-top: 4px; }
+
+    /* Pulsanti */
+    .btn-main { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 10px; }
+    .btn-main:hover { background: #1d4ed8; }
+    .btn-secondary { background: #6b7280; width: 100%; color: white; border: none; padding: 12px; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 10px; }
+    .btn-danger { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; font-weight: 600; }
+
+    /* Form di configurazione */
+    .config-row { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 12px; text-align: left; }
+    .input-field { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; margin-bottom: 10px; font-weight: 600; }
+    .checkbox-container { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; color: #333; margin-top: 6px; cursor: pointer; }
+
+    /* Popup di Allarme a Schermo Intero */
+    #alarm-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(220, 38, 38, 0.96);
+      color: white;
+      z-index: 9999;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      text-align: center;
+    }
+    #alarm-modal h2 { font-size: 2rem; margin-bottom: 16px; line-height: 1.3; }
+    #alarm-modal p { font-size: 1.4rem; margin-bottom: 30px; font-weight: 600; }
+    
+    .btn-stop { background: #ffffff; color: #dc2626; border: none; padding: 18px 32px; border-radius: 14px; font-size: 1.3rem; font-weight: 800; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .btn-stop:hover { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <!-- VISTA PRINCIPALE (MONITORAGGIO) -->
+  <div id="view-mode">
+    <h1>💊 Promemoria Medicinali</h1>
+    <div class="clock-display">
+      Orario attuale:
+      <span id="current-clock" class="clock-time">--:--</span>
+    </div>
+
+    <div id="med-container" class="med-container">
+      <!-- Le medicine inserite appariranno qui dinamicamente -->
+    </div>
+
+    <button class="btn-main" onclick="showConfig()">⚙️ Aggiungi / Modifica Medicine</button>
+  </div>
+
+  <!-- VISTA CONFIGURAZIONE -->
+  <div id="config-mode" style="display:none;">
+    <h1>Configura Farmaci</h1>
+    <p style="font-size:0.85rem; color:#666; margin-bottom:15px;">Imposta l'orario, il nome e se ripeterlo ogni giorno o prenderlo una tantum.</p>
+    
+    <div id="config-list"></div>
+
+    <button class="btn-secondary" onclick="addConfigRow('')">+ Aggiungi un altro farmaco</button>
+    <button class="btn-main" onclick="saveSchedule()">Salva e Attiva Promemoria</button>
+  </div>
+</div>
+
+<!-- POPUP DI ALLARME (VISIVO E SONORO) -->
+<div id="alarm-modal">
+  <h2>⚠️ È L'ORA DELLA MEDICINA! ⚠️</h2>
+  <p id="alarm-med-text">Prendi: ---</p>
+  <button class="btn-stop" onclick="stopAlarm()">HO PRESO LA MEDICINA ✅</button>
+</div>
+
+<!-- Audio di allarme -->
+<audio id="alarm-audio" loop src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"></audio>
+
+<script>
+  let schedule = [];
+
+  // Carica i dati salvati nel browser (LocalStorage) all'avvio
+  function loadData() {
+    const saved = localStorage.getItem('med_schedule');
+    if (saved) {
+      schedule = JSON.parse(saved);
+    } else {
+      // Esempio iniziale se vuoto
+      schedule = [
+        { time: "08:00", name: "Cardioaspirina", repeat: true },
+        { time: "14:00", name: "Vitamina D", repeat: false }
+      ];
+    }
+  }
+
+  function init() {
+    loadData();
+    renderViewMode();
+    setInterval(updateClock, 1000);
+  }
+
+  // Orologio in tempo reale e controllo allarmi
+  function updateClock() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const currentTimeStr = `${hours}:${minutes}`;
+    
+    document.getElementById('current-clock').innerText = currentTimeStr;
+    checkAlarm(currentTimeStr);
+  }
+
+  // Mostra la schermata principale con i farmaci programmati
+  function renderViewMode() {
+    const container = document.getElementById('med-container');
+    container.innerHTML = '';
+
+    if (schedule.length === 0) {
+      container.innerHTML = `<p style="color:#888; font-size:0.9rem; text-align:center; padding:20px;">Nessun farmaco impostato.</p>`;
+      return;
+    }
+
+    // Ordina per orario
+    schedule.sort((a, b) => a.time.localeCompare(b.time));
+
+    schedule.forEach((med, index) => {
+      const box = document.createElement('div');
+      box.className = 'med-box';
+      box.innerHTML = `
+        <div>
+          <div class="med-time">${med.time}</div>
+          <div class="med-name">${med.name}</div>
+          <span class="med-type">${med.repeat ? '🔄 Tutti i giorni' : '⚡ Una sola volta'}</span>
+        </div>
+        <span style="font-size: 1.8rem;">⏰</span>
+      `;
+      container.appendChild(box);
+    });
+  }
+
+  // Logica di attivazione dell'allarme
+  let alarmActive = false;
+  function checkAlarm(currentTime) {
+    if (alarmActive) return; // Evita di far sovrapporre i trigger nello stesso minuto
+
+    schedule.forEach((med, index) => {
+      if (med.time === currentTime) {
+        triggerAlarm(med, index);
+      }
+    });
+  }
+
+  function triggerAlarm(med, index) {
+    alarmActive = true;
+    const modal = document.getElementById('alarm-modal');
+    const audio = document.getElementById('alarm-audio');
+    
+    document.getElementById('alarm-med-text').innerText = `Prendi: ${med.name}`;
+    modal.style.display = 'flex';
+    
+    audio.play().catch(e => console.log("Interazione richiesta per l'audio"));
+
+    // Se il farmaco era "una tantum" (ripeti = false), lo rimuoviamo o lo disattiviamo dalla lista
+    if (!med.repeat) {
+      schedule.splice(index, 1);
+      localStorage.setItem('med_schedule', JSON.stringify(schedule));
+    }
+  }
+
+  function stopAlarm() {
+    const modal = document.getElementById('alarm-modal');
+    const audio = document.getElementById('alarm-audio');
+    
+    modal.style.display = 'none';
+    audio.pause();
+    audio.currentTime = 0;
+    
+    // Riabilita i controlli dopo un minuto per evitare doppi squilli immediati
+    setTimeout(() => { alarmActive = false; }, 60000);
+    renderViewMode();
+  }
+
+  // Passa alla schermata di configurazione
+  function showConfig() {
+    document.getElementById('view-mode').style.display = 'none';
+    document.getElementById('config-mode').style.display = 'block';
+    
+    const configList = document.getElementById('config-list');
+    configList.innerHTML = '';
+
+    if (schedule.length === 0) {
+      addConfigRow('');
+    } else {
+      schedule.forEach(med => {
+        addConfigRow(med.time, med.name, med.repeat);
+      });
+    }
+  }
+
+  // Aggiunge una riga di input nel pannello di configurazione
+  function addConfigRow(time = '', name = '', repeat = true) {
+    const configList = document.getElementById('config-list');
+    const row = document.createElement('div');
+    row.className = 'config-row';
+    row.innerHTML = `
+      <label style="font-size:0.8rem; font-weight:bold; color:#475569;">Orario:</label>
+      <input type="time" class="input-field cfg-time" value="${time}">
+      
+      <label style="font-size:0.8rem; font-weight:bold; color:#475569;">Nome Medicina:</label>
+      <input type="text" class="input-field cfg-name" placeholder="Es. Oki / Pressione" value="${name}">
+      
+      <label class="checkbox-container">
+        <input type="checkbox" class="cfg-repeat" ${repeat ? 'checked' : ''}>
+        Ripeti ogni giorno (Togli la spunta se è solo per una volta)
+      </label>
+      
+      <button type="button" class="btn-danger" style="margin-top:10px;" onclick="this.parentElement.remove()">Elimina questo farmaco</button>
+    `;
+    configList.appendChild(row);
+  }
+
+  // Salva le modifiche nel LocalStorage e torna alla vista principale
+  function saveSchedule() {
+    const rows = document.querySelectorAll('.config-row');
+    let newSchedule = [];
+
+    rows.forEach(row => {
+      const time = row.querySelector('.cfg-time').value;
+      const name = row.querySelector('.cfg-name').value.trim();
+      const repeat = row.querySelector('.cfg-repeat').checked;
+
+      if (time && name) {
+        newSchedule.push({ time, name, repeat });
+      }
+    });
+
+    schedule = newSchedule;
+    localStorage.setItem('med_schedule', JSON.stringify(schedule));
+
+    document.getElementById('config-mode').style.display = 'none';
+    document.getElementById('view-mode').style.display = 'block';
+    renderViewMode();
+  }
+
+  window.onload = init;
+</script>
+
+</body>
+</html>
