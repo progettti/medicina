@@ -99,11 +99,10 @@
   <button class="btn-stop" onclick="stopAlarm()">HO PRESO LA MEDICINA ✅</button>
 </div>
 
-<!-- Audio di allarme -->
-<audio id="alarm-audio" loop src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"></audio>
-
 <script>
   let schedule = [];
+  let audioCtx = null;
+  let beepInterval = null;
 
   // Carica i dati salvati nel browser (LocalStorage) all'avvio
   function loadData() {
@@ -111,7 +110,6 @@
     if (saved) {
       schedule = JSON.parse(saved);
     } else {
-      // Esempio iniziale se vuoto
       schedule = [
         { time: "08:00", name: "Cardioaspirina", repeat: true },
         { time: "14:00", name: "Vitamina D", repeat: false }
@@ -123,6 +121,40 @@
     loadData();
     renderViewMode();
     setInterval(updateClock, 1000);
+
+    // Sblocca il contesto audio del browser al primo tocco ovunque nella pagina
+    document.addEventListener('click', () => {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }, { once: true });
+  }
+
+  // Generatore di suono Beep sintetico
+  function playBeep() {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frequenza tono di allarme
+      gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.5); // Durata del singolo beep: 0.5 secondi
+    } catch (e) {
+      console.log("Errore audio:", e);
+    }
   }
 
   // Orologio in tempo reale e controllo allarmi
@@ -146,7 +178,6 @@
       return;
     }
 
-    // Ordina per orario
     schedule.sort((a, b) => a.time.localeCompare(b.time));
 
     schedule.forEach((med, index) => {
@@ -164,10 +195,9 @@
     });
   }
 
-  // Logica di attivazione dell'allarme
   let alarmActive = false;
   function checkAlarm(currentTime) {
-    if (alarmActive) return; // Evita di far sovrapporre i trigger nello stesso minuto
+    if (alarmActive) return;
 
     schedule.forEach((med, index) => {
       if (med.time === currentTime) {
@@ -179,14 +209,14 @@
   function triggerAlarm(med, index) {
     alarmActive = true;
     const modal = document.getElementById('alarm-modal');
-    const audio = document.getElementById('alarm-audio');
     
     document.getElementById('alarm-med-text').innerText = `Prendi: ${med.name}`;
     modal.style.display = 'flex';
     
-    audio.play().catch(e => console.log("Interazione richiesta per l'audio"));
+    // Suona subito il primo beep e poi continua ogni 1.2 secondi finché non si preme il pulsante
+    playBeep();
+    beepInterval = setInterval(playBeep, 1200);
 
-    // Se il farmaco era "una tantum" (ripeti = false), lo rimuoviamo o lo disattiviamo dalla lista
     if (!med.repeat) {
       schedule.splice(index, 1);
       localStorage.setItem('med_schedule', JSON.stringify(schedule));
@@ -195,18 +225,19 @@
 
   function stopAlarm() {
     const modal = document.getElementById('alarm-modal');
-    const audio = document.getElementById('alarm-audio');
     
     modal.style.display = 'none';
-    audio.pause();
-    audio.currentTime = 0;
     
-    // Riabilita i controlli dopo un minuto per evitare doppi squilli immediati
+    // Ferma la ripetizione del beep
+    if (beepInterval) {
+      clearInterval(beepInterval);
+      beepInterval = null;
+    }
+    
     setTimeout(() => { alarmActive = false; }, 60000);
     renderViewMode();
   }
 
-  // Passa alla schermata di configurazione
   function showConfig() {
     document.getElementById('view-mode').style.display = 'none';
     document.getElementById('config-mode').style.display = 'block';
@@ -223,7 +254,6 @@
     }
   }
 
-  // Aggiunge una riga di input nel pannello di configurazione
   function addConfigRow(time = '', name = '', repeat = true) {
     const configList = document.getElementById('config-list');
     const row = document.createElement('div');
@@ -245,7 +275,6 @@
     configList.appendChild(row);
   }
 
-  // Salva le modifiche nel LocalStorage e torna alla vista principale
   function saveSchedule() {
     const rows = document.querySelectorAll('.config-row');
     let newSchedule = [];
